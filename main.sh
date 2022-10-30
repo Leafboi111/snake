@@ -1,5 +1,7 @@
 #!/bin/bash
 
+sleep 1
+
 IFS=''
 
 declare -i height=$(($(tput lines)-5)) width=$(($(tput cols)-2))
