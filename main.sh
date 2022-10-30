@@ -1,234 +1,222 @@
 #!/bin/bash
 
+IFS=''
 
-apple() {
-   # Pick coordinates within the game area
-   APPLEX=$[( $RANDOM % ( $[ $AREAMAXX - $AREAMINX ] + 1 ) ) + $AREAMINX ]
-   APPLEY=$[( $RANDOM % ( $[ $AREAMAXY - $AREAMINY ] + 1 ) ) + $AREAMINY ]
+declare -i height=$(($(tput lines)-5)) width=$(($(tput cols)-2))
+
+# row and column number of head
+declare -i head_r head_c tail_r tail_c
+
+declare -i alive
+declare -i length
+declare body
+
+declare -i direction delta_dir
+declare -i score=0
+
+border_color="\e[30;43m"
+snake_color="\e[32;42m"
+food_color="\e[34;44m"
+text_color="\e[31;43m"
+no_color="\e[0m"
+
+# signals
+SIG_UP=USR1
+SIG_RIGHT=USR2
+SIG_DOWN=URG
+SIG_LEFT=IO
+SIG_QUIT=WINCH
+SIG_DEAD=HUP
+
+# direction arrays: 0=up, 1=right, 2=down, 3=left
+move_r=([0]=-1 [1]=0 [2]=1 [3]=0)
+move_c=([0]=0 [1]=1 [2]=0 [3]=-1)
+
+init_game() {
+    clear
+    echo -ne "\e[?25l"
+    stty -echo
+    for ((i=0; i<height; i++)); do
+        for ((j=0; j<width; j++)); do
+            eval "arr$i[$j]=' '"
+        done
+    done
 }
 
-drawapple() {
-   # Check we haven't picked an occupied space
-   LASTEL=$(( ${#LASTPOSX[@]} - 1 ))
-   x=0
-   apple
-   while [ "$x" -le "$LASTEL" ];
-   do
-      if [ "$APPLEX" = "${LASTPOSX[$x]}" ] && [ "$APPLEY" = "${LASTPOSY[$x]}" ];
-      then
-         # Invalid coords... in use
-         x=0
-         apple
-      else
-         x=$(( $x + 1 ))
-      fi
-   done
-   tput setf 4
-   tput cup $APPLEY $APPLEX
-   printf %b "$APPLECHAR"
-   tput setf 9
+move_and_draw() {
+    echo -ne "\e[${1};${2}H$3"
 }
 
-growsnake() {
-   # Pad out the arrays with oldest position 3 times to make snake bigger
-   LASTPOSX=( ${LASTPOSX[0]} ${LASTPOSX[0]} ${LASTPOSX[0]} ${LASTPOSX[@]} )
-   LASTPOSY=( ${LASTPOSY[0]} ${LASTPOSY[0]} ${LASTPOSY[0]} ${LASTPOSY[@]} )
-   RET=1
-   while [ "$RET" -eq "1" ];
-   do
-      apple
-      RET=$?
-   done
-   drawapple
+# print everything in the buffer
+draw_board() {
+    move_and_draw 1 1 "$border_color+$no_color"
+    for ((i=2; i<=width+1; i++)); do
+        move_and_draw 1 $i "$border_color-$no_color"
+    done
+    move_and_draw 1 $((width + 2)) "$border_color+$no_color"
+    echo
+
+    for ((i=0; i<height; i++)); do
+        move_and_draw $((i+2)) 1 "$border_color|$no_color"
+        eval echo -en "\"\${arr$i[*]}\""
+        echo -e "$border_color|$no_color"
+    done
+
+    move_and_draw $((height+2)) 1 "$border_color+$no_color"
+    for ((i=2; i<=width+1; i++)); do
+        move_and_draw $((height+2)) $i "$border_color-$no_color"
+    done
+    move_and_draw $((height+2)) $((width + 2)) "$border_color+$no_color"
+    echo
 }
 
-move() {
-   case "$DIRECTION" in
-      u) POSY=$(( $POSY - 1 ));;
-      d) POSY=$(( $POSY + 1 ));;
-      l) POSX=$(( $POSX - 1 ));;
-      r) POSX=$(( $POSX + 1 ));;
-   esac
+# set the snake's initial state
+init_snake() {
+    alive=0
+    length=10
+    direction=0
+    delta_dir=-1
 
-   # Collision detection
-   ( sleep $DELAY && kill -ALRM $$ ) &
-   if [ "$POSX" -le "$FIRSTCOL" ] || [ "$POSX" -ge "$LASTCOL" ] ; then
-      tput cup $(( $LASTROW + 1 )) 0
-      gameover
-   elif [ "$POSY" -le "$FIRSTROW" ] || [ "$POSY" -ge "$LASTROW" ] ; then
-      tput cup $(( $LASTROW + 1 )) 0
-      gameover
-   fi
+    head_r=$((height/2-2))
+    head_c=$((width/2))
 
-   # Get Last Element of Array ref
-   LASTEL=$(( ${#LASTPOSX[@]} - 1 ))
-   #tput cup $ROWS 0
-   #printf "LASTEL: $LASTEL"
+    body=''
+    for ((i=0; i<length-1; i++)); do
+        body="1$body"
+    done
 
-   x=1 # set starting element to 1 as pos 0 should be undrawn further down (end of tail)
-   while [ "$x" -le "$LASTEL" ];
-   do
-      if [ "$POSX" = "${LASTPOSX[$x]}" ] && [ "$POSY" = "${LASTPOSY[$x]}" ];
-      then
-         tput cup $(( $LASTROW + 1 )) 0
-         gameover
-      fi
-      x=$(( $x + 1 ))
-   done
+    local p=$((${move_r[1]} * (length-1)))
+    local q=$((${move_c[1]} * (length-1)))
 
-   # clear the oldest position on screen
-   tput cup ${LASTPOSY[0]} ${LASTPOSX[0]}
-   printf " "
+    tail_r=$((head_r+p))
+    tail_c=$((head_c+q))
 
-   # truncate position history by 1 (get rid of oldest)
-   LASTPOSX=( `echo "${LASTPOSX[@]}" | cut -d " " -f 2-` $POSX )
-   LASTPOSY=( `echo "${LASTPOSY[@]}" | cut -d " " -f 2-` $POSY )
-   tput cup 1 10
-   #echo "LASTPOSX array ${LASTPOSX[@]} LASTPOSY array ${LASTPOSY[@]}"
-   tput cup 2 10
-   echo "SIZE=${#LASTPOSX[@]}"
+    eval "arr$head_r[$head_c]=\"${snake_color}o$no_color\""
 
-   # update position history (add last to highest val)
-   LASTPOSX[$LASTEL]=$POSX
-   LASTPOSY[$LASTEL]=$POSY
+    prev_r=$head_r
+    prev_c=$head_c
 
-   # plot new position
-   tput setf 2
-   tput cup $POSY $POSX
-   printf %b "$SNAKECHAR"
-   tput setf 9
-
-   # Check if we hit an apple
-   if [ "$POSX" -eq "$APPLEX" ] && [ "$POSY" -eq "$APPLEY" ]; then
-      growsnake
-      updatescore 10
-   fi
+    b=$body
+    while [ -n "$b" ]; do
+        # change in each direction
+        local p=${move_r[$(echo $b | grep -o '^[0-3]')]}
+        local q=${move_c[$(echo $b | grep -o '^[0-3]')]}
+        new_r=$((prev_r+p))
+        new_c=$((prev_c+q))
+        eval "arr$new_r[$new_c]=\"${snake_color}o$no_color\""
+        prev_r=$new_r
+        prev_c=$new_c
+        b=${b#[0-3]}
+    done
 }
-
-updatescore() {
-   SCORE=$(( $SCORE + $1 ))
-   tput cup 2 30
-   printf "SCORE: $SCORE"
+is_dead() {
+    if [ "$1" -lt 0 ] || [ "$1" -ge "$height" ] || \
+        [ "$2" -lt 0 ] || [ "$2" -ge "$width" ]; then
+        return 0
+    fi
+    eval "local pos=\${arr$1[$2]}"
+    if [ "$pos" == "${snake_color}o$no_color" ]; then
+        return 0
+    fi
+    return 1
 }
-randomchar() {
-    [ $# -eq 0 ] && return 1
-    n=$(( ($RANDOM % $#) + 1 ))
-    eval DIRECTION=\${$n}
+give_food() {
+    local food_r=$((RANDOM % height))
+    local food_c=$((RANDOM % width))
+    eval "local pos=\${arr$food_r[$food_c]}"
+    while [ "$pos" != ' ' ]; do
+        food_r=$((RANDOM % height))
+        food_c=$((RANDOM % width))
+        eval "pos=\${arr$food_r[$food_c]}"
+    done
+    eval "arr$food_r[$food_c]=\"$food_color@$no_color\""
 }
-
-gameover() {
-   tput cvvis
-   stty echo
-   sleep $DELAY
-   trap exit ALRM
-   tput cup $ROWS 0
-   clear
-   exit
+move_snake() {
+    local newhead_r=$((head_r + move_r[direction]))
+    local newhead_c=$((head_c + move_c[direction]))
+    eval "local pos=\${arr$newhead_r[$newhead_c]}"
+    if $(is_dead $newhead_r $newhead_c); then
+        alive=1
+        return
+    fi
+    if [ "$pos" == "$food_color@$no_color" ]; then
+        length+=1
+        eval "arr$newhead_r[$newhead_c]=\"${snake_color}o$no_color\""
+        body="$(((direction+2)%4))$body"
+        head_r=$newhead_r
+        head_c=$newhead_c
+        score+=1
+        give_food;
+        return
+    fi
+    head_r=$newhead_r
+    head_c=$newhead_c
+    local d=$(echo $body | grep -o '[0-3]$')
+    body="$(((direction+2)%4))${body%[0-3]}"
+    eval "arr$tail_r[$tail_c]=' '"
+    eval "arr$head_r[$head_c]=\"${snake_color}o$no_color\""
+    # new tail
+    local p=${move_r[(d+2)%4]}
+    local q=${move_c[(d+2)%4]}
+    tail_r=$((tail_r+p))
+    tail_c=$((tail_c+q))
 }
-
-drawborder() {
-   # Draw top
-   tput setf 6
-   tput cup $FIRSTROW $FIRSTCOL
-   x=$FIRSTCOL
-   while [ "$x" -le "$LASTCOL" ];
-   do
-      printf %b "$WALLCHAR"
-      x=$(( $x + 1 ));
-   done
-
-   # Draw sides
-   x=$FIRSTROW
-   while [ "$x" -le "$LASTROW" ];
-   do
-      tput cup $x $FIRSTCOL; printf %b "$WALLCHAR"
-      tput cup $x $LASTCOL; printf %b "$WALLCHAR"
-      x=$(( $x + 1 ));
-   done
-
-   # Draw bottom
-   tput cup $LASTROW $FIRSTCOL
-   x=$FIRSTCOL
-   while [ "$x" -le "$LASTCOL" ];
-   do
-      printf %b "$WALLCHAR"
-      x=$(( $x + 1 ));
-   done
-   tput setf 9
+change_dir() {
+    if [ $(((direction+2)%4)) -ne $1 ]; then
+        direction=$1
+    fi
+    delta_dir=-1
 }
+getchar() {
+    trap "" SIGINT SIGQUIT
+    trap "return;" $SIG_DEAD
+    while true; do
+        read -s -n 1 key
+        case "$key" in
+            [qQ]) kill -$SIG_QUIT $game_pid
+                  return
+                  ;;
+            [wW]) kill -$SIG_UP $game_pid
+                  ;;
+            [dD]) kill -$SIG_RIGHT $game_pid
+                  ;;
+            [sS]) kill -$SIG_DOWN $game_pid
+                  ;;
+            [aA]) kill -$SIG_LEFT $game_pid
+                  ;;
+       esac
+    done
+}
+game_loop() {
+    trap "delta_dir=0;" $SIG_UP
+    trap "delta_dir=1;" $SIG_RIGHT
+    trap "delta_dir=2;" $SIG_DOWN
+    trap "delta_dir=3;" $SIG_LEFT
+    trap "exit 1;" $SIG_QUIT
+    while [ "$alive" -eq 0 ]; do
+        echo -e "\n${text_color}           Your score: $score $no_color"
+        if [ "$delta_dir" -ne -1 ]; then
+            change_dir $delta_dir
+        fi
+        move_snake
+        draw_board
+        sleep 0.03
+    done
 
-SNAKECHAR="-"
-WALLCHAR="|"
-APPLECHAR="o"
-
-SNAKESIZE=3
-DELAY=0.1
-FIRSTROW=3
-FIRSTCOL=1
-LASTCOL=40
-LASTROW=20
-AREAMAXX=$(( $LASTCOL - 1 ))           
-AREAMINX=$(( $FIRSTCOL + 1 ))          
-AREAMAXY=$(( $LASTROW - 1 ))           
-AREAMINY=$(( $FIRSTROW + 1))           
-ROWS=`tput lines`                       
-ORIGINX=$(( $LASTCOL / 2 ))            
-ORIGINY=$(( $LASTROW / 2 ))             
-POSX=$ORIGINX                           
-POSY=$ORIGINY                          
-# Pad out arrays
-ZEROES=`echo |awk '{printf("%0"'"$SNAKESIZE"'"d\n",$1)}' | sed 's/0/0 /g'`
-LASTPOSX=( $ZEROES )                   
-LASTPOSY=( $ZEROES )  
-
-SCORE=0                                 
-
-clear
-echo "
-Keys:
- W - UP
- S - DOWN
- A - LEFT
- D - RIGHT
- X - QUIT
-Press Return to continue
-"
-
-stty -echo
-tput civis
-read RTN
-tput setb 0
-tput bold
-clear
-drawborder
-updatescore 0
-
-drawapple
-sleep 1
-trap move ALRM
-
-DIRECTIONS=( u d l r )
-randomchar "${DIRECTIONS[@]}"
-
-sleep 1
-move
-while :
-do
-   read -s -n 1 key
-   case "$key" in
-   w)   DIRECTION="u";;
-   s)   DIRECTION="d";;
-   a)   DIRECTION="l";;
-   d)   DIRECTION="r";;
-   x)   tput cup $COLS 0
-        echo "Quitting..."
-        tput cvvis
-        stty echo
-        tput reset
-        printf "Bye Bye!\n"
-        trap exit ALRM
-        sleep $DELAY
-        exit 0
-        ;;
-   esac
-done
+    echo -e "${text_color}Oh, No! You 0xdead$no_color"
+    # signals the input loop that the snake is dead
+    kill -$SIG_DEAD $$
+}
+clear_game() {
+    stty echo
+    echo -e "\e[?25h"
+}
+init_game
+init_snake
+give_food
+draw_board
+game_loop &
+game_pid=$!
+getchar
+clear_game
+exit 0
