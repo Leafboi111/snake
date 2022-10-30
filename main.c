@@ -1,156 +1,148 @@
+// C program to build the complete
+// snake game
+#include <conio.h>
 #include <stdio.h>
-#include <ncurses.h>
-
-// Size of playing field
-#define WIDTH 10
-#define HEIGHT 10
-
-/*	The playing field is calculated using the grid below
- *	This way, we do not have to create an array to store 
- *	the entirety of the playing field, but just where the
- *	snake occupies space.
- *
- *	For example, the index of a 4 by 4 playing field is 
- *	listed below.
- *	+-----------+
- *	|0 |1 |2 |3 |
- *	|--+--+--+--|
- *	|4 |5 |6 |7 |
- *	|--+--+--+--|
- *	|8 |9 |10|11|
- *	|--+--+--+--|
- *	|12|13|14|15|
- *	+-----------+
- *
- *	Use the coordinateToX and coordinateToY functions to
- *	find the x/y coordinates of each index.
- *
- *	The following table show the x/y coordinate of a 4 by 4
- *	playing field:
- *
- * +-------+-------+-------+-------+
- * | (0,1) | (1,1) | (2,1) | (3,1) |
- * +-------+-------+-------+-------+
- * | (0,2) | (1,2) | (2,2) | (3,2) |
- * +-------+-------+-------+-------+
- * | (0,3) | (1,3) | (2,3) | (3,3) |
- * +-------+-------+-------+-------+
- * | (0,4) | (1,4) | (2,4) | (3,4) |
- * +-------+-------+-------+-------+
- *
- */
-
-// Array to store snake position
-// snake[number on grid][time to live]
-int snake[WIDTH*HEIGHT][2];	// TODO: dynamically allocated snake instead of setting hard value
-int snakeHead;
-
-void initGrid();
-void initNcurses();
-void printSnake();
-void initSnake();
-int coordinateToX(int input);
-int coordinateToY(int input);
-
-int	main () {
-	// init
-	initNcurses();
-	initGrid();
-	initSnake();
-
-	// debug
-	snake[0][0] = 50;
-	snake[1][0] = 51;
-	snake[2][0] = 52;
-	snake[3][0] = 53;
-
-	// Set snakeHead to last element in snake[][]
-	for (int i = 0; i < sizeof(snake)/sizeof(snake[0]); i++) {
-		if ( snake[i][0] != -1 )
-			continue;
-
-		snakeHead = snake[i-1][0];
-		break;
-	}
-
-	printSnake();
-	
-	getch();
-
-	endwin();
-	return(0);
+#include <stdlib.h>
+#include <unistd.h>
+  
+int i, j, height = 20, width = 20;
+int gameover, score;
+int x, y, fruitx, fruity, flag;
+  
+// Function to generate the fruit
+// within the boundary
+void setup()
+{
+    gameover = 0;
+  
+    // Stores height and width
+    x = height / 2;
+    y = width / 2;
+label1:
+    fruitx = rand() % 20;
+    if (fruitx == 0)
+        goto label1;
+label2:
+    fruity = rand() % 20;
+    if (fruity == 0)
+        goto label2;
+    score = 0;
 }
-
-// Print snake on grid
-void printSnake () {
-	attron(COLOR_PAIR(1));
-	for (int i = 0; i < sizeof(snake)/sizeof(snake[0]); i++) {
-		// Don't print if snake does not exsist -1
-		if ( snake[i][0] == -1 )
-			continue;
-
-		mvprintw(coordinateToY(snake[i][0])+1,coordinateToX(snake[i][0])*2+1,"  ");
-	}
-
-	attron(COLOR_PAIR(2));
-	mvprintw(coordinateToY(snakeHead)+1,coordinateToX(snakeHead)*2+1,"  ");
-
-	attroff(COLOR_PAIR(2));
+  
+// Function to draw the boundaries
+void draw()
+{
+    system("cls");
+    for (i = 0; i < height; i++) {
+        for (j = 0; j < width; j++) {
+            if (i == 0 || i == width - 1
+                || j == 0
+                || j == height - 1) {
+                printf("#");
+            }
+            else {
+                if (i == x && j == y)
+                    printf("0");
+                else if (i == fruitx
+                         && j == fruity)
+                    printf("*");
+                else
+                    printf(" ");
+            }
+        }
+        printf("\n");
+    }
+  
+    // Print the score after the
+    // game ends
+    printf("score = %d", score);
+    printf("\n");
+    printf("press X to quit the game");
 }
-
-// Initialize Snake
-void initSnake () {
-	for (int i = 0; i < sizeof(snake)/sizeof(snake[0]); i++) {
-		snake[i][0] = -1;
-		snake[i][1] = -1;
-	}
+  
+// Function to take the input
+void input()
+{
+    if (kbhit()) {
+        switch (getch()) {
+        case 'a':
+            flag = 1;
+            break;
+        case 's':
+            flag = 2;
+            break;
+        case 'd':
+            flag = 3;
+            break;
+        case 'w':
+            flag = 4;
+            break;
+        case 'x':
+            gameover = 1;
+            break;
+        }
+    }
 }
-
-// Initialize ncurses
-void initNcurses () {
-	initscr();
-	cbreak();
-	noecho();
-	keypad(stdscr, TRUE);
-	curs_set(0);
+  
+// Function for the logic behind
+// each movement
+void logic()
+{
+    sleep(0.01);
+    switch (flag) {
+    case 1:
+        y--;
+        break;
+    case 2:
+        x++;
+        break;
+    case 3:
+        y++;
+        break;
+    case 4:
+        x--;
+        break;
+    default:
+        break;
+    }
+  
+    // If the game is over
+    if (x < 0 || x > height
+        || y < 0 || y > width)
+        gameover = 1;
+  
+    // If snake reaches the fruit
+    // then update the score
+    if (x == fruitx && y == fruity) {
+    label3:
+        fruitx = rand() % 20;
+        if (fruitx == 0)
+            goto label3;
+  
+    // After eating the above fruit
+    // generate new fruit
+    label4:
+        fruity = rand() % 20;
+        if (fruity == 0)
+            goto label4;
+        score += 10;
+    }
 }
-
-// Prints screen, initialize grid
-void initGrid () {
-	// Enable Color
-	start_color();
-	init_pair(1, COLOR_BLACK, COLOR_CYAN);	// Snake color
-	init_pair(2, COLOR_BLACK, COLOR_GREEN);	// Snake head color
-	init_pair(3, COLOR_BLACK, COLOR_RED);	// Apple color
-
-	// Print top and bottom bars
-	move(0,0);
-	printw("+");
-	for (int i = 0; i < WIDTH*2; i++)
-		printw("-");
-	printw("+");
-
-	move(HEIGHT+1,0);
-	printw("+");
-	for (int i = 0; i < WIDTH*2; i++)
-		printw("-");
-	printw("+");
-
-	// Print sidebars
-	for (int i = 1; i < HEIGHT+1; i++)
-		mvprintw(i,0,"|");
-
-	for (int i = 1; i < HEIGHT+1; i++)
-		mvprintw(i,WIDTH*2+1,"|");
-
-}
-
-// Parse the coordinate number system to array index (x)
-int coordinateToX ( int input ) {
-	return input%WIDTH;
-}
-
-// Parse the coordinate number system to array index (y)
-int coordinateToY ( int input ) {
-	return input/HEIGHT;
+  
+// Driver Code
+void main()
+{
+    int m, n;
+  
+    // Generate boundary
+    setup();
+  
+    // Until the game is over
+    while (!gameover) {
+  
+        // Function Call
+        draw();
+        input();
+        logic();
+    }
 }
