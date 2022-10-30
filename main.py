@@ -171,7 +171,7 @@ def main(screen):
     screen.timeout(0)
 
     # Init snake & field
-    field = Field(10)
+    field = Field(12)
     snake = Snake("Joe")
     snake.set_field(field)
 
@@ -189,7 +189,7 @@ def main(screen):
         field.render(screen)
         screen.refresh()
         
-        time.sleep(.4)
+        time.sleep(.2)
 
 if __name__=='__main__':
     curses.wrapper(main)
