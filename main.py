@@ -171,7 +171,7 @@ def main(screen):
     screen.timeout(0)
 
     # Init snake & field
-    field = Field(12)
+    field = Field(18)
     snake = Snake("Joe")
     snake.set_field(field)
 
